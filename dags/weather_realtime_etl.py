@@ -20,7 +20,7 @@ default_args = {
     "retries": 1,
 }
 
-# One shared hook, same pattern as your taxi ETL DAG
+# snowflakeHook for connection
 hook = SnowflakeHook(snowflake_conn_id=SNOWFLAKE_CONN_ID)
 
 with DAG(
