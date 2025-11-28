@@ -1,0 +1,1 @@
+attached screenshots from airflow and snowflake for successful dag run and data validation for both dags in ETL.
