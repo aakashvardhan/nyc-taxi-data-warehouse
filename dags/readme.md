@@ -92,7 +92,7 @@ Create the following Airflow Variables (in **Admin → Variables**):
 2. Confirm your email address (required before keys work).  
 3. Go to the **API keys** page in your OpenWeather account dashboard.  
 4. Create or copy an API key.  
-5. Test your key in a browser by calling the Current Weather endpoint for New York with your key and units set to imperial (Fahrenheit). You should receive a JSON response with weather data, not a 401 error.
+5. Test your key in a browser by calling the Current Weather endpoint after 2hrs of creating (https://api.openweathermap.org/data/2.5/weather?q=London,uk&APPID=YourCustomApiKey)for New York with your key and units set to imperial (Fahrenheit). You should receive a JSON response with weather data, not a 401 error.
 6. In Airflow → **Admin → Variables**:
    - Create a variable with key `openweather_api_key`.  
    - Set the value to your API key token (only the token, no quotes or prefixes).
