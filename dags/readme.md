@@ -1,5 +1,9 @@
 # NYC Taxi Analytics – ETL with Airflow, PySpark & Snowflake
 
+### System Diagram:
+![systemDaigramNyc](https://github.com/user-attachments/assets/6f66ba90-2ee2-4b12-b1fd-0b34eead279b)
+
+
 This part of the project implements an end-to-end analytics pipeline for NYC Yellow Taxi data using:
 
 - **Apache Airflow** – orchestration  
