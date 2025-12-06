@@ -207,6 +207,17 @@ with DAG(
             )
 
             logging.info("Wrote cleaned data to directory %s", cleaned_dir)
+            
+            # Verify files were written
+            try:
+                csv_files = glob.glob(os.path.join(cleaned_dir, "*.csv"))
+                logging.info("CSV files created: %s", csv_files)
+                if not csv_files:
+                    raise RuntimeError(f"No CSV files found after write to {cleaned_dir}")
+            except Exception as e:
+                logging.error("Error verifying CSV files: %s", e)
+                raise
+            
             return cleaned_dir
 
         except Exception as e:
@@ -233,15 +244,43 @@ with DAG(
         """
         schema = Variable.get("target_schema_raw", default_var="RAW")
 
+        # Log the received directory path
+        logging.info("Received cleaned_dir from previous task: %s", cleaned_dir)
+        
+        # Verify directory exists
+        if not os.path.exists(cleaned_dir):
+            raise FileNotFoundError(f"Cleaned directory not found: {cleaned_dir}")
+        
+        # List contents of directory for debugging
+        try:
+            dir_contents = os.listdir(cleaned_dir)
+            logging.info("Contents of %s: %s", cleaned_dir, dir_contents)
+        except Exception as e:
+            logging.warning("Could not list directory contents: %s", e)
+
         pattern = os.path.join(cleaned_dir, "part-*.csv")
+        logging.info("Looking for files matching pattern: %s", pattern)
         files = glob.glob(pattern)
 
         if not files:
-            logging.warning("No cleaned CSV files found for pattern %s", pattern)
-            return "No cleaned data"
-
+            # Try alternative patterns
+            logging.warning("No files found for pattern %s, trying alternatives", pattern)
+            alternative_pattern = os.path.join(cleaned_dir, "*.csv")
+            files = glob.glob(alternative_pattern)
+            if not files:
+                raise FileNotFoundError(
+                    f"No CSV files found in {cleaned_dir}. Directory contents: {os.listdir(cleaned_dir)}"
+                )
+        
+        logging.info("Found %d CSV file(s): %s", len(files), files)
         cleaned_file = os.path.abspath(files[0])
-        logging.info("Loading cleaned data from %s", cleaned_file)
+        
+        # Verify file exists and is readable
+        if not os.path.isfile(cleaned_file):
+            raise FileNotFoundError(f"File not found or not a regular file: {cleaned_file}")
+        
+        file_size_mb = os.path.getsize(cleaned_file) / 1_000_000
+        logging.info("Loading cleaned data from %s (%.2f MB)", cleaned_file, file_size_mb)
 
         stage_name = f'"{schema}"."NYC_TAXI_STAGE"'
         fmt_name   = f'"{schema}"."NYC_TAXI_CSV_FMT"'
@@ -285,7 +324,15 @@ with DAG(
                     OVERWRITE = TRUE
                 """
                 logging.info("Executing PUT:\n%s", put_sql.strip())
-                cur.execute(put_sql)
+                try:
+                    cur.execute(put_sql)
+                    put_result = cur.fetchall()
+                    logging.info("PUT result: %s", put_result)
+                except Exception as e:
+                    logging.error("Failed to PUT file to Snowflake stage: %s", e)
+                    logging.error("File path: %s", cleaned_file)
+                    logging.error("File exists: %s", os.path.exists(cleaned_file))
+                    raise
 
                 # 2) COPY INTO staging table
                 copy_sql = f"""

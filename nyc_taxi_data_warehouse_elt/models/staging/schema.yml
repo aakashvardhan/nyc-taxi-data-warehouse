@@ -1,0 +1,69 @@
+version: 2
+
+models:
+  - name: stg_taxi_trips
+    description: Cleaned and standardized NYC taxi trip data from RAW layer
+    columns:
+      - name: pickup_datetime
+        description: Timestamp when the trip started
+        tests:
+          - not_null
+      
+      - name: dropoff_datetime
+        description: Timestamp when the trip ended
+        tests:
+          - not_null
+      
+      - name: pickup_zone_id
+        description: TLC Taxi Zone ID for pickup location
+        tests:
+          - not_null
+      
+      - name: dropoff_zone_id
+        description: TLC Taxi Zone ID for dropoff location
+        tests:
+          - not_null
+      
+      - name: trip_distance
+        description: Trip distance in miles
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: false
+      
+      - name: total_amount
+        description: Total fare amount in USD
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: false
+
+  - name: stg_weather
+    description: Cleaned and standardized weather observations from RAW layer
+    columns:
+      - name: observed_at
+        description: Timestamp of weather observation
+        tests:
+          - not_null
+      
+      - name: temperature_fahrenheit
+        description: Temperature in Fahrenheit
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: -50
+              max_value: 150
+      
+      - name: humidity_percent
+        description: Humidity percentage
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      
+      - name: city
+        description: City name
+        tests:
+          - not_null

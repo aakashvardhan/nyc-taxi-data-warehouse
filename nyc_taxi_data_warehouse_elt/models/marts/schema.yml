@@ -1,0 +1,83 @@
+version: 2
+
+models:
+  - name: mart_trips_weather
+    description: Hourly aggregated trip metrics joined with weather data for analytics
+    columns:
+      - name: hour_ts
+        description: Hour timestamp (truncated to hour)
+        tests:
+          - not_null
+          - unique
+      
+      - name: trip_count
+        description: Number of trips in this hour
+        tests:
+          - not_null
+      
+      - name: avg_trip_distance
+        description: Average trip distance in miles for this hour
+      
+      - name: avg_total_amount
+        description: Average total fare amount for this hour
+      
+      - name: avg_temperature_fahrenheit
+        description: Average temperature during this hour
+      
+      - name: weather_description
+        description: Weather condition description for this hour
+
+  - name: mart_daily_metrics
+    description: Daily aggregated trip and revenue metrics with weather summary
+    columns:
+      - name: trip_date
+        description: Date of trips
+        tests:
+          - not_null
+          - unique
+      
+      - name: trip_count
+        description: Total number of trips for the day
+        tests:
+          - not_null
+      
+      - name: total_revenue
+        description: Total revenue for the day
+        tests:
+          - not_null
+      
+      - name: avg_fare
+        description: Average fare amount for the day
+      
+      - name: avg_distance
+        description: Average trip distance for the day
+      
+      - name: weekend_trip_count
+        description: Number of trips that occurred on weekend
+      
+      - name: weekday_trip_count
+        description: Number of trips that occurred on weekday
+
+  - name: mart_zone_analysis
+    description: Trip patterns and metrics aggregated by pickup/dropoff zone pairs
+    columns:
+      - name: pickup_zone_id
+        description: TLC Taxi Zone ID for pickup location
+        tests:
+          - not_null
+      
+      - name: dropoff_zone_id
+        description: TLC Taxi Zone ID for dropoff location
+        tests:
+          - not_null
+      
+      - name: trip_count
+        description: Total number of trips for this zone pair
+        tests:
+          - not_null
+      
+      - name: avg_trip_distance
+        description: Average distance for trips between these zones
+      
+      - name: peak_hour
+        description: Most common hour of day for this zone pair

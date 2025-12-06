@@ -1,0 +1,48 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Raw data loaded from ETL pipelines
+    database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+    schema: RAW
+    
+    tables:
+      - name: NYC_TAXI_TRIPS
+        loaded_at_field: LOAD_TS
+        description: Historical NYC taxi trip data loaded via PySpark ETL
+        columns:
+          - name: PICKUP_DATETIME
+            description: Timestamp when the trip started
+          - name: DROPOFF_DATETIME
+            description: Timestamp when the trip ended
+          - name: PICKUP_ZONE_ID
+            description: TLC Taxi Zone ID for pickup location
+          - name: DROPOFF_ZONE_ID
+            description: TLC Taxi Zone ID for dropoff location
+          - name: PASSENGER_COUNT
+            description: Number of passengers in the trip
+          - name: TRIP_DISTANCE
+            description: Trip distance in miles
+          - name: TOTAL_AMOUNT
+            description: Total fare amount in USD
+          - name: LOAD_TS
+            description: Timestamp when the record was loaded into warehouse
+      
+      - name: RAW_WEATHER
+        loaded_at_field: LOAD_TS
+        description: Real-time weather observations for NYC
+        columns:
+          - name: OBSERVED_AT
+            description: Timestamp of weather observation
+          - name: CITY
+            description: City name
+          - name: TEMP_F
+            description: Temperature in Fahrenheit
+          - name: WEATHER_DESC
+            description: Weather condition description
+          - name: HUMIDITY_PCT
+            description: Humidity percentage
+          - name: RAW_JSON
+            description: Full JSON payload from OpenWeather API
+          - name: LOAD_TS
+            description: Timestamp when the record was loaded into warehouse 
