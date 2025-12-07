@@ -20,7 +20,7 @@ default_args = {
     "retries": 1,
 }
 
-# snowflakeHook for connection
+# One shared hook, same pattern as your taxi ETL DAG
 hook = SnowflakeHook(snowflake_conn_id=SNOWFLAKE_CONN_ID)
 
 with DAG(
@@ -28,7 +28,8 @@ with DAG(
     description="Fetch near-real-time NYC weather and load into Snowflake",
     schedule="0 * * * *",  # hourly; adjust if you want more/less frequent
     start_date=datetime(2025, 9, 1, tzinfo=timezone.utc),
-    catchup=False,
+    catchup=True,          # <-- enable backfilling
+    max_active_runs=1,     # <-- avoid hammering the API during backfill
     default_args=default_args,
     tags=["etl", "weather", "realtime", "snowflake"],
 ) as dag:
@@ -81,8 +82,14 @@ with DAG(
         """
         Fetch current weather for New York (or city in Variable),
         then insert one row into <schema>.RAW_WEATHER in Snowflake.
+
+        Uses Airflow's logical_date so that backfills write a row
+        whose OBSERVED_AT matches the scheduled interval.
         """
         schema = Variable.get("target_schema_raw", default_var="RAW")
+
+        # Logical run time (used as OBSERVED_AT for backfills)
+        logical_dt = context["logical_date"]
 
         # 1) Get API key & city from Airflow Variables
         try:
@@ -95,7 +102,7 @@ with DAG(
 
         city = Variable.get("weather_city", default_var="New York")
 
-        # 2) Call OpenWeather API
+        # 2) Call OpenWeather API (current weather)
         url = "https://api.openweathermap.org/data/2.5/weather"
         params = {
             "q": city,
@@ -114,13 +121,15 @@ with DAG(
 
         # 3) Parse JSON into a row
         try:
-            observed_at = pd.Timestamp.utcnow()
+            # Use Airflow's logical date as the observation timestamp
+            observed_at = pd.Timestamp(logical_dt)
+
             city_name = data.get("name", city)
             temp_f = float(data["main"]["temp"])
             desc = str(data["weather"][0]["description"])
             humidity_pct = int(data["main"]["humidity"])
 
-            # We’ll keep the full JSON as a VARIANT column as well
+            # Keep the full JSON as a VARIANT column as well
             raw_json_str = json.dumps(data)
 
         except Exception as e:
@@ -159,7 +168,8 @@ with DAG(
                 conn.commit()
                 msg = (
                     f"Inserted weather row for city={city_name}, "
-                    f"temp_f={temp_f}, humidity={humidity_pct} into {schema}.RAW_WEATHER"
+                    f"temp_f={temp_f}, humidity={humidity_pct} into {schema}.RAW_WEATHER "
+                    f"for logical_dt={logical_dt}"
                 )
                 logging.info(msg)
                 return msg
