@@ -10,6 +10,9 @@ sources:
       - name: NYC_TAXI_TRIPS
         loaded_at_field: LOAD_TS
         description: Historical NYC taxi trip data loaded via PySpark ETL
+        freshness:
+          warn_after: {count: 24, period: hour}
+          error_after: {count: 48, period: hour}
         columns:
           - name: PICKUP_DATETIME
             description: Timestamp when the trip started
@@ -31,6 +34,9 @@ sources:
       - name: RAW_WEATHER
         loaded_at_field: LOAD_TS
         description: Real-time weather observations for NYC
+        freshness:
+          warn_after: {count: 2, period: hour}
+          error_after: {count: 4, period: hour}
         columns:
           - name: OBSERVED_AT
             description: Timestamp of weather observation

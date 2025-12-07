@@ -36,7 +36,7 @@ select
 from trips t
 left join weather w
     on w.observation_hour = t.pickup_hour
-    and w.city = 'New York'
+    and lower(w.city) like '%new york%'
 
 group by 
     t.pickup_hour,
