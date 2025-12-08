@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import requests
 import pandas as pd
@@ -18,6 +18,7 @@ SNOWFLAKE_CONN_ID = "snowflake_catfish"
 default_args = {
     "depends_on_past": False,
     "retries": 1,
+    "retry_delay": timedelta(minutes=5),
 }
 
 # One shared hook, same pattern as your taxi ETL DAG
@@ -28,8 +29,8 @@ with DAG(
     description="Fetch near-real-time NYC weather and load into Snowflake",
     schedule="0 * * * *",  # hourly; adjust if you want more/less frequent
     start_date=datetime(2025, 9, 1, tzinfo=timezone.utc),
-    catchup=True,          # <-- enable backfilling
-    max_active_runs=1,     # <-- avoid hammering the API during backfill
+    catchup=False,         # Disabled to prevent backlog accumulation
+    max_active_runs=1,     # Limit concurrent runs
     default_args=default_args,
     tags=["etl", "weather", "realtime", "snowflake"],
 ) as dag:

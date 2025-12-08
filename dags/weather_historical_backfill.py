@@ -182,35 +182,103 @@ with DAG(
         errors = []
         
         with hook.get_conn() as conn, conn.cursor() as cur:
-            try:
-                conn.autocommit(False)
+            # Use autocommit - each record commits independently
+            # This ensures progress is never lost on failure
+            conn.autocommit(True)
+            
+            for hour_str in hours_to_fetch:
+                hour_dt = datetime.fromisoformat(hour_str)
+                unix_ts = int(hour_dt.timestamp())
                 
-                for hour_str in hours_to_fetch:
-                    hour_dt = datetime.fromisoformat(hour_str)
-                    unix_ts = int(hour_dt.timestamp())
+                try:
+                    # Rate limiting - avoid hammering API
+                    import time
+                    time.sleep(1)
                     
-                    try:
-                        # Fetch historical weather
-                        data = fetch_historical_weather_for_timestamp(
-                            api_key, NYC_LAT, NYC_LON, unix_ts
+                    # Fetch historical weather
+                    data = fetch_historical_weather_for_timestamp(
+                        api_key, NYC_LAT, NYC_LON, unix_ts
+                    )
+                    
+                    # Parse response - One Call API 3.0 timemachine format
+                    # Returns data for the requested hour
+                    weather_data = data.get("data", [{}])[0] if "data" in data else data
+                    
+                    temp_f = weather_data.get("temp", weather_data.get("main", {}).get("temp"))
+                    humidity = weather_data.get("humidity", weather_data.get("main", {}).get("humidity"))
+                    
+                    # Get weather description
+                    weather_list = weather_data.get("weather", [])
+                    weather_desc = weather_list[0].get("description", "unknown") if weather_list else "unknown"
+                    
+                    if temp_f is None:
+                        logging.warning(f"No temperature data for {hour_str}")
+                        continue
+                    
+                    # Insert into Snowflake (auto-committed)
+                    insert_sql = f"""
+                        INSERT INTO "{schema}"."RAW_WEATHER"
+                        (OBSERVED_AT, CITY, TEMP_F, WEATHER_DESC, HUMIDITY_PCT, RAW_JSON)
+                        SELECT
+                            %s AS OBSERVED_AT,
+                            %s AS CITY,
+                            %s AS TEMP_F,
+                            %s AS WEATHER_DESC,
+                            %s AS HUMIDITY_PCT,
+                            PARSE_JSON(%s) AS RAW_JSON
+                    """
+                    
+                    cur.execute(
+                        insert_sql,
+                        (
+                            hour_dt,
+                            "New York",
+                            float(temp_f),
+                            str(weather_desc),
+                            int(humidity) if humidity else None,
+                            json.dumps(data),
+                        ),
+                    )
+                    records_inserted += 1
+                    
+                    logging.info(
+                        f"Inserted weather for {hour_str}: "
+                        f"temp={temp_f}°F, humidity={humidity}%, {weather_desc}"
+                    )
+                    
+                except requests.exceptions.HTTPError as e:
+                    if "401" in str(e) or "Unauthorized" in str(e):
+                        # API key doesn't have access to historical data
+                        # Fall back to using estimated data based on typical NYC weather
+                        logging.warning(
+                            f"Historical API not available, using estimated data for {hour_str}"
                         )
                         
-                        # Parse response - One Call API 3.0 timemachine format
-                        # Returns data for the requested hour
-                        weather_data = data.get("data", [{}])[0] if "data" in data else data
+                        # Use seasonal estimates for NYC in late September/early October
+                        month = hour_dt.month
+                        hour_of_day = hour_dt.hour
                         
-                        temp_f = weather_data.get("temp", weather_data.get("main", {}).get("temp"))
-                        humidity = weather_data.get("humidity", weather_data.get("main", {}).get("humidity"))
+                        # Base temperatures by month (NYC averages)
+                        monthly_avg = {
+                            1: 35, 2: 38, 3: 45, 4: 55, 5: 65, 6: 75,
+                            7: 80, 8: 78, 9: 70, 10: 60, 11: 50, 12: 40
+                        }
+                        base_temp = monthly_avg.get(month, 60)
                         
-                        # Get weather description
-                        weather_list = weather_data.get("weather", [])
-                        weather_desc = weather_list[0].get("description", "unknown") if weather_list else "unknown"
+                        # Adjust for time of day (cooler at night, warmer afternoon)
+                        if 6 <= hour_of_day < 10:
+                            temp_adjustment = -5
+                        elif 10 <= hour_of_day < 16:
+                            temp_adjustment = 5
+                        elif 16 <= hour_of_day < 20:
+                            temp_adjustment = 0
+                        else:
+                            temp_adjustment = -8
                         
-                        if temp_f is None:
-                            logging.warning(f"No temperature data for {hour_str}")
-                            continue
+                        estimated_temp = base_temp + temp_adjustment
+                        estimated_humidity = 65  # NYC average
+                        weather_desc = "clear sky"  # Default
                         
-                        # Insert into Snowflake
                         insert_sql = f"""
                             INSERT INTO "{schema}"."RAW_WEATHER"
                             (OBSERVED_AT, CITY, TEMP_F, WEATHER_DESC, HUMIDITY_PCT, RAW_JSON)
@@ -228,105 +296,35 @@ with DAG(
                             (
                                 hour_dt,
                                 "New York",
-                                float(temp_f),
-                                str(weather_desc),
-                                int(humidity) if humidity else None,
-                                json.dumps(data),
+                                float(estimated_temp),
+                                weather_desc,
+                                estimated_humidity,
+                                json.dumps({
+                                    "source": "estimated",
+                                    "note": "Based on NYC seasonal averages",
+                                    "month": month,
+                                    "hour": hour_of_day
+                                }),
                             ),
                         )
                         records_inserted += 1
-                        
-                        logging.info(
-                            f"Inserted weather for {hour_str}: "
-                            f"temp={temp_f}°F, humidity={humidity}%, {weather_desc}"
-                        )
-                        
-                    except requests.exceptions.HTTPError as e:
-                        if "401" in str(e) or "Unauthorized" in str(e):
-                            # API key doesn't have access to historical data
-                            # Fall back to using estimated data based on typical NYC weather
-                            logging.warning(
-                                f"Historical API not available, using estimated data for {hour_str}"
-                            )
-                            
-                            # Use seasonal estimates for NYC in late September/early October
-                            month = hour_dt.month
-                            hour_of_day = hour_dt.hour
-                            
-                            # Base temperatures by month (NYC averages)
-                            monthly_avg = {
-                                1: 35, 2: 38, 3: 45, 4: 55, 5: 65, 6: 75,
-                                7: 80, 8: 78, 9: 70, 10: 60, 11: 50, 12: 40
-                            }
-                            base_temp = monthly_avg.get(month, 60)
-                            
-                            # Adjust for time of day (cooler at night, warmer afternoon)
-                            if 6 <= hour_of_day < 10:
-                                temp_adjustment = -5
-                            elif 10 <= hour_of_day < 16:
-                                temp_adjustment = 5
-                            elif 16 <= hour_of_day < 20:
-                                temp_adjustment = 0
-                            else:
-                                temp_adjustment = -8
-                            
-                            estimated_temp = base_temp + temp_adjustment
-                            estimated_humidity = 65  # NYC average
-                            weather_desc = "clear sky"  # Default
-                            
-                            insert_sql = f"""
-                                INSERT INTO "{schema}"."RAW_WEATHER"
-                                (OBSERVED_AT, CITY, TEMP_F, WEATHER_DESC, HUMIDITY_PCT, RAW_JSON)
-                                SELECT
-                                    %s AS OBSERVED_AT,
-                                    %s AS CITY,
-                                    %s AS TEMP_F,
-                                    %s AS WEATHER_DESC,
-                                    %s AS HUMIDITY_PCT,
-                                    PARSE_JSON(%s) AS RAW_JSON
-                            """
-                            
-                            cur.execute(
-                                insert_sql,
-                                (
-                                    hour_dt,
-                                    "New York",
-                                    float(estimated_temp),
-                                    weather_desc,
-                                    estimated_humidity,
-                                    json.dumps({
-                                        "source": "estimated",
-                                        "note": "Based on NYC seasonal averages",
-                                        "month": month,
-                                        "hour": hour_of_day
-                                    }),
-                                ),
-                            )
-                            records_inserted += 1
-                        else:
-                            errors.append(f"{hour_str}: {str(e)}")
-                            
-                    except Exception as e:
+                    else:
                         errors.append(f"{hour_str}: {str(e)}")
-                        logging.warning(f"Failed to fetch weather for {hour_str}: {e}")
+                        
+                except Exception as e:
+                    errors.append(f"{hour_str}: {str(e)}")
+                    logging.warning(f"Failed to fetch weather for {hour_str}: {e}")
+                    # Continue to next hour - don't abort entire batch
+            
+            # No commit needed - autocommit handles it
+            
+            msg = f"Inserted {records_inserted} historical weather records"
+            if errors:
+                msg += f" ({len(errors)} errors)"
+                logging.warning(f"Errors: {errors[:5]}")
                 
-                conn.commit()
-                
-                msg = f"Inserted {records_inserted} historical weather records"
-                if errors:
-                    msg += f" ({len(errors)} errors)"
-                    logging.warning(f"Errors: {errors[:5]}")  # Log first 5 errors
-                    
-                logging.info(msg)
-                return msg
-                
-            except Exception as e:
-                logging.exception("Error during historical weather backfill")
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-                raise e
+            logging.info(msg)
+            return msg
 
     # DAG flow
     date_range = get_trip_date_range()
