@@ -40,3 +40,10 @@ models:
     
     marts:
       +materialized: table
+
+# Snapshot configuration
+snapshots:
+  nyc_taxi_data_warehouse_elt:
+    +target_schema: SNAPSHOTS
+    +tags: ['snapshot', 'scd']
+    +transient: false  # Snowflake: retain Time Travel data for recovery

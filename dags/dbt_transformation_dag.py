@@ -23,19 +23,22 @@ default_args = {
     "retry_delay": timedelta(minutes=5),
 }
 
-def ensure_analytics_schema(**context):
-    """Create ANALYTICS schema if it doesn't exist"""
+def ensure_schemas(**context):
+    """Create ANALYTICS and SNAPSHOTS schemas if they don't exist"""
     hook = SnowflakeHook(snowflake_conn_id=SNOWFLAKE_CONN_ID)
+    
+    schemas = ["ANALYTICS", "SNAPSHOTS"]
     
     with hook.get_conn() as conn, conn.cursor() as cur:
         try:
             conn.autocommit(False)
-            cur.execute('CREATE SCHEMA IF NOT EXISTS "ANALYTICS"')
+            for schema in schemas:
+                cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+                logging.info(f"Ensured {schema} schema exists")
             conn.commit()
-            logging.info("Ensured ANALYTICS schema exists")
-            return "ANALYTICS schema ready"
+            return f"Schemas ready: {', '.join(schemas)}"
         except Exception as e:
-            logging.exception("Error ensuring ANALYTICS schema")
+            logging.exception("Error ensuring schemas")
             try:
                 conn.rollback()
             except Exception:
@@ -66,10 +69,10 @@ with DAG(
         soft_fail=True,  # Don't fail pipeline if weather ETL missed
     )
 
-    # Task 1: Ensure ANALYTICS schema exists
+    # Task 1: Ensure ANALYTICS and SNAPSHOTS schemas exist
     t_ensure_schema = PythonOperator(
-        task_id="ensure_analytics_schema",
-        python_callable=ensure_analytics_schema,
+        task_id="ensure_schemas",
+        python_callable=ensure_schemas,
     )
 
     # Task 2: Install dbt dependencies (dbt_utils)
@@ -90,18 +93,35 @@ with DAG(
         bash_command=f"cd {DBT_PROJECT_DIR} && dbt run --profiles-dir {DBT_PROJECT_DIR}",
     )
 
-    # Task 5: Run dbt tests to validate data quality
+    # Task 5: Run dbt snapshots (SCD Type 2 for weather and metrics history)
+    # Snapshots run AFTER models because snp_daily_metrics depends on mart_daily_metrics
+    t_dbt_snapshot = BashOperator(
+        task_id="dbt_snapshot",
+        bash_command=f"cd {DBT_PROJECT_DIR} && dbt snapshot --profiles-dir {DBT_PROJECT_DIR}",
+    )
+
+    # Task 6: Run dbt tests to validate data quality
     t_dbt_test = BashOperator(
         task_id="dbt_test",
         bash_command=f"cd {DBT_PROJECT_DIR} && dbt test --profiles-dir {DBT_PROJECT_DIR}",
     )
 
-    # Task 6: Generate dbt documentation
+    # Task 7: Generate dbt documentation
     t_dbt_docs_generate = BashOperator(
         task_id="dbt_docs_generate",
         bash_command=f"cd {DBT_PROJECT_DIR} && dbt docs generate --profiles-dir {DBT_PROJECT_DIR}",
     )
 
     # Define task dependencies
-    # Wait for weather -> ensure schema -> deps -> (freshness check parallel) -> run -> test -> docs
-    t_wait_weather >> t_ensure_schema >> t_dbt_deps >> t_dbt_source_freshness >> t_dbt_run >> t_dbt_test >> t_dbt_docs_generate
+    # wait_weather -> ensure_schema -> deps -> freshness -> run -> snapshot -> test -> docs
+    # Note: Snapshots run AFTER models because snp_daily_metrics refs mart_daily_metrics
+    (
+        t_wait_weather
+        >> t_ensure_schema
+        >> t_dbt_deps
+        >> t_dbt_source_freshness
+        >> t_dbt_run
+        >> t_dbt_snapshot
+        >> t_dbt_test
+        >> t_dbt_docs_generate
+    )

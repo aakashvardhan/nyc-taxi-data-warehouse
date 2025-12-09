@@ -1,0 +1,133 @@
+version: 2
+
+snapshots:
+  - name: snp_weather_observations
+    description: >
+      SCD Type 2 snapshot of weather observations for NYC.
+      Tracks historical changes in weather conditions to enable 
+      time-series analysis of weather patterns and their correlation 
+      with taxi demand. Uses timestamp strategy based on load_ts.
+    config:
+      tags: ['snapshot', 'weather', 'scd2']
+    columns:
+      - name: dbt_scd_id
+        description: Unique surrogate key for this snapshot record version
+        tests:
+          - unique
+          - not_null
+
+      - name: observed_at
+        description: Timestamp when the weather observation was recorded
+        tests:
+          - not_null
+
+      - name: city
+        description: City name for the weather observation
+        tests:
+          - not_null
+
+      - name: temperature_fahrenheit
+        description: Temperature in Fahrenheit at observation time
+
+      - name: weather_description
+        description: Text description of weather conditions (e.g., "clear sky", "light rain")
+
+      - name: humidity_percent
+        description: Relative humidity percentage at observation time
+
+      - name: load_ts
+        description: Timestamp when the record was loaded into the data warehouse
+        tests:
+          - not_null
+
+      - name: weather_observation_key
+        description: Surrogate key for the weather observation (city + observed_at)
+        tests:
+          - not_null
+
+      - name: dbt_valid_from
+        description: Timestamp when this snapshot record version became valid
+        tests:
+          - not_null
+
+      - name: dbt_valid_to
+        description: >
+          Timestamp when this snapshot record version was superseded.
+          NULL indicates this is the current active record.
+
+      - name: dbt_updated_at
+        description: Timestamp used by dbt to track record changes (load_ts)
+
+  - name: snp_daily_metrics
+    description: >
+      SCD Type 2 snapshot of daily trip metrics from mart_daily_metrics.
+      Tracks changes in aggregated KPIs over time, useful for auditing 
+      when late-arriving taxi data modifies historical totals and for 
+      trend analysis. Uses check strategy on key metric columns.
+    config:
+      tags: ['snapshot', 'metrics', 'scd2']
+    columns:
+      - name: dbt_scd_id
+        description: Unique surrogate key for this snapshot record version
+        tests:
+          - unique
+          - not_null
+
+      - name: trip_date
+        description: Date of the trip metrics aggregation
+        tests:
+          - not_null
+
+      - name: trip_count
+        description: Total number of taxi trips for the day
+        tests:
+          - not_null
+
+      - name: total_revenue
+        description: Total fare revenue for the day in USD
+        tests:
+          - not_null
+
+      - name: avg_fare
+        description: Average fare amount per trip for the day
+
+      - name: avg_distance
+        description: Average trip distance in miles for the day
+
+      - name: avg_duration_minutes
+        description: Average trip duration in minutes for the day
+
+      - name: avg_passenger_count
+        description: Average number of passengers per trip for the day
+
+      - name: weekend_trip_count
+        description: Number of trips that occurred on weekend days (Sat/Sun)
+
+      - name: weekday_trip_count
+        description: Number of trips that occurred on weekdays (Mon-Fri)
+
+      - name: avg_daily_temperature
+        description: Average temperature in Fahrenheit for the day
+
+      - name: min_daily_temperature
+        description: Minimum temperature in Fahrenheit for the day
+
+      - name: max_daily_temperature
+        description: Maximum temperature in Fahrenheit for the day
+
+      - name: avg_daily_humidity
+        description: Average humidity percentage for the day
+
+      - name: snapshot_captured_at
+        description: Timestamp when this snapshot was captured
+
+      - name: dbt_valid_from
+        description: Timestamp when this snapshot record version became valid
+        tests:
+          - not_null
+
+      - name: dbt_valid_to
+        description: >
+          Timestamp when this snapshot record version was superseded.
+          NULL indicates this is the current active record.
+
