@@ -11,7 +11,7 @@ snapshots:
       tags: ['snapshot', 'weather', 'scd2']
     columns:
       - name: dbt_scd_id
-        description: Unique surrogate key for this snapshot record version
+        description: SCD Type 2 row/version surrogate identifier that uniquely identifies each historical version of a record
         tests:
           - unique
           - not_null
@@ -41,7 +41,7 @@ snapshots:
           - not_null
 
       - name: weather_observation_key
-        description: Surrogate key for the weather observation (city + observed_at)
+        description: Business (natural) composite key composed of city and observed_at that uniquely identifies a weather observation
         tests:
           - not_null
 
@@ -68,7 +68,7 @@ snapshots:
       tags: ['snapshot', 'metrics', 'scd2']
     columns:
       - name: dbt_scd_id
-        description: Unique surrogate key for this snapshot record version
+        description: SCD Type 2 row/version surrogate identifier that uniquely identifies each historical version of a record
         tests:
           - unique
           - not_null
