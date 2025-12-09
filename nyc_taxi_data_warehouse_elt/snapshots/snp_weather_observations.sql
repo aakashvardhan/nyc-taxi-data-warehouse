@@ -13,7 +13,7 @@
 {{
     config(
         target_schema='SNAPSHOTS',
-        unique_key="city || '-' || to_char(observed_at, 'YYYY-MM-DD HH24:MI:SS')",
+        unique_key=['city', 'observed_at'],
         strategy='timestamp',
         updated_at='load_ts',
         invalidate_hard_deletes=True
