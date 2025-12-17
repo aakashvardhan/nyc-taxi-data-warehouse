@@ -255,14 +255,102 @@ docker exec nyc-taxi-data-warehouse-airflow-1 env | grep SNOWFLAKE
 
 ---
 
+# Machine Learning Pipeline
+# 5️⃣ Model Training DAG — train_fare_model_dag
+
+This DAG:
+
+Loads features from FARE_DAILY_FEATURES
+
+Splits into train/test
+
+Trains a Random Forest Regression model
+
+Evaluates model accuracy (hindcast MAE ≈ 2–3 dollars)
+
+Saves trained model → /opt/airflow/models/fare_model.pkl
+
+Why Random Forest?
+
+Handles non-linear relationships (fare depends on weather, distance, congestion)
+
+Robust to outliers in real city data
+
+No assumptions about distribution or time-series stationarity
+
+Fast inference and retraining
+
+Works well with mixed engineered features (lags, moving averages)
+
+Output:
+
+✔ fare_model.pkl
+✔ Training logs
+
+# 6️⃣ Forecast Generation DAG — fare_forecasting_dag
+
+Loads trained model
+
+Constructs the next 7 days of features
+
+Predicts future average fare
+
+Inserts results into:
+
+Output Table:
+
+ANALYTICS.FARE_DAILY_FORECAST
+
+Sample Output:
+
+FORECAST_DATE	PREDICTED_AVG_FARE
+2025-11-02	28.39
+2025-11-03	28.39
+…	…
+# 7️⃣ Forecast Evaluation DAG — forecast_evaluation_dag
+
+Because actual values for future dates don’t exist, we evaluate using hindcasting:
+
+Select last 7 historical days
+
+Re-predict them using the model
+
+Compute:
+
+MAE
+
+MAPE
+
+Daily error values
+
+Store as analytics table:
+
+Output Table:
+
+ANALYTICS.FORECAST_EVAL
+
+# 8️⃣ Zone Demand & Weather Forecast CTAS DAGs
+
+Produce analytic-ready aggregates for Tableau:
+
+ZONE_DEMAND — zone-level daily demand & avg fare
+
+WEATHER_FORECAST_DAILY — temp/humidity/precip summary
+
 ## Project Structure
 
 ```
 nyc-taxi-data-warehouse/
 ├── dags/
-│   ├── etl_spark_historical.py       # Taxi trip ETL
-│   ├── weather_realtime_etl.py       # Weather ETL
-│   └── dbt_transformation_dag.py     # dbt orchestration (NEW)
+│   ├── etl_spark_historical.py
+│   ├── weather_realtime_etl.py
+│   ├── weather_historical_backfill.py
+│   ├── dbt_transformation_dag.py
+│   ├── train_fare_model_dag.py
+│   ├── fare_forecasting_dag.py
+│   ├── forecast_evaluation_dag.py
+│   ├── zone_forecast.py
+│   ├── weather_future_realtime.py
 ├── nyc_taxi_data_warehouse_elt/      # dbt project (NEW)
 │   ├── models/
 │   │   ├── staging/                   # Staging models + sources
